@@ -300,7 +300,17 @@ async def process_uploaded_export(
         )
 
     imported_items = []
+    skipped_duplicates = 0
     errors = []
+
+    # Get existing source_ids for this project to avoid duplicates
+    existing_source_ids = set(
+        item.source_id for item in db.query(ContentItem.source_id).filter(
+            ContentItem.project_id == project_id,
+            ContentItem.source == ContentSource.INSTAGRAM,
+            ContentItem.deleted_at.is_(None),
+        ).all()
+    )
 
     # Process each post
     posts = posts_data if isinstance(posts_data, list) else posts_data.get("ig_posts", posts_data.get("ig_stories", posts_data.get("posts", [])))
@@ -314,6 +324,11 @@ async def process_uploaded_export(
             for media in media_items:
                 uri = media.get("uri", "")
                 if not uri:
+                    continue
+
+                # Skip duplicates - check if this URI was already imported
+                if uri in existing_source_ids:
+                    skipped_duplicates += 1
                     continue
 
                 media_data = find_media_file(zip_file, uri)
@@ -351,6 +366,7 @@ async def process_uploaded_export(
                 )
 
                 db.add(content_item)
+                existing_source_ids.add(uri)  # Track newly added items too
                 imported_items.append({
                     "filename": filename,
                     "type": content_type.value,
@@ -364,12 +380,73 @@ async def process_uploaded_export(
     db.commit()
     zip_file.close()
 
+    message = f"Successfully imported {len(imported_items)} items from Instagram export"
+    if skipped_duplicates > 0:
+        message += f" ({skipped_duplicates} duplicates skipped)"
+
     return {
         "success": True,
         "imported_count": len(imported_items),
+        "skipped_duplicates": skipped_duplicates,
         "imported_items": imported_items[:20],
         "errors": errors[:10] if errors else [],
-        "message": f"Successfully imported {len(imported_items)} items from Instagram export",
+        "message": message,
+    }
+
+
+@router.delete("/duplicates/{project_id}")
+async def remove_duplicate_content(
+    project_id: UUID,
+    current_user: User = Depends(get_current_user_from_token),
+    db: Session = Depends(get_db),
+):
+    """
+    Remove duplicate content items from a project.
+    Keeps the first item for each unique source_id and deletes the rest.
+    """
+    from sqlalchemy import func
+    from datetime import datetime
+
+    # Find all source_ids that have duplicates
+    duplicate_source_ids = (
+        db.query(ContentItem.source_id)
+        .filter(
+            ContentItem.project_id == project_id,
+            ContentItem.source == ContentSource.INSTAGRAM,
+            ContentItem.deleted_at.is_(None),
+            ContentItem.source_id.isnot(None),
+        )
+        .group_by(ContentItem.source_id)
+        .having(func.count(ContentItem.id) > 1)
+        .all()
+    )
+
+    deleted_count = 0
+
+    for (source_id,) in duplicate_source_ids:
+        # Get all items with this source_id, ordered by created_at
+        items = (
+            db.query(ContentItem)
+            .filter(
+                ContentItem.project_id == project_id,
+                ContentItem.source_id == source_id,
+                ContentItem.deleted_at.is_(None),
+            )
+            .order_by(ContentItem.created_at.asc())
+            .all()
+        )
+
+        # Keep the first one, soft-delete the rest
+        for item in items[1:]:
+            item.deleted_at = datetime.utcnow()
+            deleted_count += 1
+
+    db.commit()
+
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Removed {deleted_count} duplicate items",
     }
 
 
