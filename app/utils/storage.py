@@ -47,7 +47,7 @@ def upload_file_to_r2(
 
 
 def get_file_url(key: str) -> str:
-    """Get a presigned URL for a file."""
+    """Get a presigned URL for downloading a file."""
     client = get_r2_client()
 
     url = client.generate_presigned_url(
@@ -57,6 +57,40 @@ def get_file_url(key: str) -> str:
     )
 
     return url
+
+
+def generate_upload_url(filename: str, content_type: str, folder: str = "uploads") -> dict:
+    """Generate a presigned URL for direct upload to R2.
+
+    Returns dict with 'upload_url' and 'key' for the upload.
+    """
+    client = get_r2_client()
+
+    # Generate unique key
+    file_ext = filename.split(".")[-1] if "." in filename else ""
+    unique_id = str(uuid.uuid4())
+    key = f"{folder}/{unique_id}.{file_ext}" if file_ext else f"{folder}/{unique_id}"
+
+    # Generate presigned URL for PUT
+    url = client.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": settings.r2_bucket_name,
+            "Key": key,
+            "ContentType": content_type,
+        },
+        ExpiresIn=3600,  # 1 hour to complete upload
+    )
+
+    return {"upload_url": url, "key": key}
+
+
+def get_file_from_r2(key: str) -> bytes:
+    """Download a file from R2 and return its contents."""
+    client = get_r2_client()
+
+    response = client.get_object(Bucket=settings.r2_bucket_name, Key=key)
+    return response["Body"].read()
 
 
 def delete_file_from_r2(key: str) -> bool:
