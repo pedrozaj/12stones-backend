@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.content import ContentItem
+from app.models.user import User
+from app.routers.auth import get_current_user_from_token
 from app.schemas.content import ContentItemResponse, ContentUpdate, ImportRequest
+from app.utils.storage import get_file_url
 
 router = APIRouter()
 
@@ -20,10 +24,45 @@ async def list_content(
     page: int = 1,
     limit: int = 50,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
 ):
     """List content items in a project."""
-    # TODO: Implement list content
-    return []
+    query = db.query(ContentItem).filter(
+        ContentItem.project_id == project_id,
+        ContentItem.deleted_at.is_(None),
+    )
+
+    if type:
+        query = query.filter(ContentItem.type == type)
+    if source:
+        query = query.filter(ContentItem.source == source)
+
+    items = query.order_by(ContentItem.taken_at.desc().nullslast(), ContentItem.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    result = []
+    for item in items:
+        # Generate thumbnail URL if available
+        thumbnail_url = None
+        if item.thumbnail_r2_key:
+            thumbnail_url = get_file_url(item.thumbnail_r2_key)
+        elif item.r2_key and item.type.value == "photo":
+            thumbnail_url = get_file_url(item.r2_key)
+
+        result.append(ContentItemResponse(
+            id=item.id,
+            type=item.type,
+            source=item.source,
+            thumbnail_url=thumbnail_url,
+            original_url=get_file_url(item.r2_key) if item.r2_key else None,
+            caption=item.custom_caption or item.original_caption,
+            taken_at=item.taken_at,
+            location=item.location_name,
+            analysis=None,  # TODO: Include analysis if available
+            included_in_narrative=item.included_in_narrative,
+            created_at=item.created_at,
+        ))
+
+    return result
 
 
 @router.post("/upload")
