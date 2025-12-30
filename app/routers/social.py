@@ -28,7 +28,7 @@ OAUTH_URLS = {
     "facebook": {
         "auth": "https://www.facebook.com/v18.0/dialog/oauth",
         "token": "https://graph.facebook.com/v18.0/oauth/access_token",
-        "scope": "public_profile,user_photos,user_videos",
+        "scope": "public_profile,email,user_photos",
     },
     "tiktok": {
         "auth": "https://www.tiktok.com/v2/auth/authorize/",
@@ -59,7 +59,7 @@ async def list_connections(
     connections = db.execute(
         select(SocialConnection).where(
             SocialConnection.user_id == current_user.id,
-            SocialConnection.disconnected_at.is_(None),
+            SocialConnection.deleted_at.is_(None),
         )
     ).scalars().all()
 
@@ -85,7 +85,7 @@ async def connect_platform(
         )
 
     oauth_config = OAUTH_URLS[platform]
-    redirect_uri = f"{settings.frontend_url}/api/social/callback/{platform}"
+    redirect_uri = f"{settings.backend_url}/api/social/callback/{platform}"
 
     # Build OAuth URL
     params = {
@@ -120,19 +120,28 @@ async def oauth_callback(
     user_id = UUID(state)
     client_id, client_secret = get_oauth_credentials(platform)
     oauth_config = OAUTH_URLS[platform]
-    redirect_uri = f"{settings.frontend_url}/api/social/callback/{platform}"
+    redirect_uri = f"{settings.backend_url}/api/social/callback/{platform}"
 
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
-        token_data = {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri,
-        }
-
-        response = await client.post(oauth_config["token"], data=token_data)
+        if platform == "facebook":
+            # Facebook uses GET request with query params for token exchange
+            token_params = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+            }
+            response = await client.get(oauth_config["token"], params=token_params)
+        else:
+            token_data = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            }
+            response = await client.post(oauth_config["token"], data=token_data)
 
         if response.status_code != 200:
             raise HTTPException(
@@ -141,15 +150,32 @@ async def oauth_callback(
             )
 
         token_response = response.json()
+        access_token = token_response.get("access_token")
+        platform_user_id = None
+        platform_username = None
+
+        # Fetch user profile for Facebook
+        if platform == "facebook" and access_token:
+            profile_response = await client.get(
+                "https://graph.facebook.com/v18.0/me",
+                params={
+                    "access_token": access_token,
+                    "fields": "id,name,email",
+                },
+            )
+            if profile_response.status_code == 200:
+                profile_data = profile_response.json()
+                platform_user_id = profile_data.get("id")
+                platform_username = profile_data.get("name")
+        else:
+            platform_user_id = token_response.get("user_id") or token_response.get("open_id")
 
     # Save connection to database
-    access_token = token_response.get("access_token")
-    platform_user_id = token_response.get("user_id") or token_response.get("open_id")
-
     connection = SocialConnection(
         user_id=user_id,
         platform=platform,
         platform_user_id=str(platform_user_id) if platform_user_id else None,
+        username=platform_username,
         access_token=access_token,
         refresh_token=token_response.get("refresh_token"),
     )
@@ -180,7 +206,7 @@ async def disconnect_platform(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    connection.disconnected_at = datetime.utcnow()
+    connection.deleted_at = datetime.utcnow()
     db.commit()
 
     return {"success": True}
@@ -197,7 +223,7 @@ async def sync_connection(
         select(SocialConnection).where(
             SocialConnection.id == connection_id,
             SocialConnection.user_id == current_user.id,
-            SocialConnection.disconnected_at.is_(None),
+            SocialConnection.deleted_at.is_(None),
         )
     ).scalar_one_or_none()
 

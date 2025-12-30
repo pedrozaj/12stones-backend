@@ -20,8 +20,19 @@ class SocialConnectionResponse(BaseModel):
 
     id: UUID
     platform: SocialPlatform
-    username: str | None = None
+    platform_username: str | None = None
     connected_at: datetime
     last_sync: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Custom validation to map model fields to schema fields."""
+        return cls(
+            id=obj.id,
+            platform=obj.platform,
+            platform_username=obj.username,
+            connected_at=obj.created_at,
+            last_sync=obj.last_sync_at,
+        )
