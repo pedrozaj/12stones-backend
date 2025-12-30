@@ -104,10 +104,48 @@ async def update_content_item(
     content_id: UUID,
     request: ContentUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
 ):
     """Update content metadata or inclusion status."""
-    # TODO: Implement update content
-    raise HTTPException(status_code=501, detail="Not implemented")
+    # Get the content item
+    item = db.query(ContentItem).filter(
+        ContentItem.id == content_id,
+        ContentItem.project_id == project_id,
+        ContentItem.deleted_at.is_(None),
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Content item not found")
+
+    # Update fields if provided
+    if request.included_in_narrative is not None:
+        item.included_in_narrative = request.included_in_narrative
+    if request.custom_caption is not None:
+        item.custom_caption = request.custom_caption
+
+    db.commit()
+    db.refresh(item)
+
+    # Generate URLs
+    thumbnail_url = None
+    if item.thumbnail_r2_key:
+        thumbnail_url = get_file_url(item.thumbnail_r2_key)
+    elif item.r2_key and item.type.value == "photo":
+        thumbnail_url = get_file_url(item.r2_key)
+
+    return ContentItemResponse(
+        id=item.id,
+        type=item.type,
+        source=item.source,
+        thumbnail_url=thumbnail_url,
+        original_url=get_file_url(item.r2_key) if item.r2_key else None,
+        caption=item.custom_caption or item.original_caption,
+        taken_at=item.taken_at,
+        location=item.location_name,
+        analysis=None,
+        included_in_narrative=item.included_in_narrative,
+        created_at=item.created_at,
+    )
 
 
 @router.delete("/{content_id}")
