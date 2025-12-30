@@ -1,17 +1,32 @@
 """FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.database import Base, engine
 from app.routers import auth, content, jobs, narratives, projects, social, videos, voice
 
+# Import all models to ensure they're registered with Base
+from app.models import user, project, content as content_model, voice as voice_model  # noqa: F401
+from app.models import narrative, video, social as social_model, job  # noqa: F401
+
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create database tables on startup."""
+    Base.metadata.create_all(bind=engine)
+    yield
 
 app = FastAPI(
     title="12 Stones API",
     description="AI Life Narrative Video Generator",
     version="0.1.0",
+    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
 )
