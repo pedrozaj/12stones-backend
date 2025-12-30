@@ -18,13 +18,13 @@ def configure_r2_cors():
     cors_configuration = {
         "CORSRules": [
             {
-                "AllowedHeaders": ["*"],
+                # R2 doesn't support wildcard "*" for AllowedHeaders
+                "AllowedHeaders": ["content-type", "authorization", "x-amz-content-sha256", "x-amz-date"],
                 "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
                 "AllowedOrigins": [
                     "http://localhost:3000",
                     "https://12stones.vercel.app",
                     "https://12stones-frontend.vercel.app",
-                    "https://*.vercel.app",
                 ],
                 "ExposeHeaders": ["ETag"],
                 "MaxAgeSeconds": 3600,
