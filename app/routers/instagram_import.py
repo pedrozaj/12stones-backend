@@ -61,13 +61,17 @@ def parse_instagram_timestamp(timestamp: int | str) -> datetime | None:
 
 
 def find_posts_json(zip_file: zipfile.ZipFile) -> dict | None:
-    """Find and parse the posts JSON file from Instagram export."""
+    """Find and parse the posts or stories JSON file from Instagram export."""
     # Instagram export can have different structures
     possible_paths = [
         "content/posts_1.json",
         "your_instagram_activity/content/posts_1.json",
         "posts_1.json",
         "media.json",
+        # Stories paths
+        "your_instagram_activity/media/stories.json",
+        "media/stories.json",
+        "stories.json",
     ]
 
     for path in possible_paths:
@@ -77,9 +81,9 @@ def find_posts_json(zip_file: zipfile.ZipFile) -> dict | None:
         except KeyError:
             continue
 
-    # Try to find any posts JSON file
+    # Try to find any posts or stories JSON file
     for name in zip_file.namelist():
-        if "posts" in name.lower() and name.endswith(".json"):
+        if ("posts" in name.lower() or "stories" in name.lower()) and name.endswith(".json"):
             try:
                 with zip_file.open(name) as f:
                     return json.load(f)
@@ -158,7 +162,7 @@ async def upload_instagram_export(
 
     # Process each post
     # Instagram export structure can vary, handle different formats
-    posts = posts_data if isinstance(posts_data, list) else posts_data.get("ig_posts", posts_data.get("posts", []))
+    posts = posts_data if isinstance(posts_data, list) else posts_data.get("ig_posts", posts_data.get("ig_stories", posts_data.get("posts", [])))
 
     for post in posts:
         try:
@@ -299,7 +303,7 @@ async def process_uploaded_export(
     errors = []
 
     # Process each post
-    posts = posts_data if isinstance(posts_data, list) else posts_data.get("ig_posts", posts_data.get("posts", []))
+    posts = posts_data if isinstance(posts_data, list) else posts_data.get("ig_posts", posts_data.get("ig_stories", posts_data.get("posts", [])))
 
     for post in posts:
         try:
