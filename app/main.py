@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database import Base, engine
 from app.routers import auth, content, instagram_import, jobs, narratives, projects, social, videos, voice
+from app.utils.storage import configure_r2_cors
 
 # Import all models to ensure they're registered with Base
 from app.models import user, project, content as content_model, voice as voice_model  # noqa: F401
@@ -18,8 +19,10 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create database tables on startup."""
+    """Create database tables on startup and configure R2 CORS."""
     Base.metadata.create_all(bind=engine)
+    # Configure CORS on R2 bucket for direct uploads
+    configure_r2_cors()
     yield
 
 app = FastAPI(

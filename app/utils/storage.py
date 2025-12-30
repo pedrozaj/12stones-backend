@@ -11,6 +11,39 @@ from app.config import get_settings
 settings = get_settings()
 
 
+def configure_r2_cors():
+    """Configure CORS on R2 bucket for direct uploads from frontend."""
+    client = get_r2_client()
+
+    cors_configuration = {
+        "CORSRules": [
+            {
+                "AllowedHeaders": ["*"],
+                "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
+                "AllowedOrigins": [
+                    "http://localhost:3000",
+                    "https://12stones.vercel.app",
+                    "https://12stones-frontend.vercel.app",
+                    "https://*.vercel.app",
+                ],
+                "ExposeHeaders": ["ETag"],
+                "MaxAgeSeconds": 3600,
+            }
+        ]
+    }
+
+    try:
+        client.put_bucket_cors(
+            Bucket=settings.r2_bucket_name,
+            CORSConfiguration=cors_configuration,
+        )
+        print(f"CORS configured for bucket {settings.r2_bucket_name}")
+        return True
+    except Exception as e:
+        print(f"Failed to configure CORS: {e}")
+        return False
+
+
 def get_r2_client():
     """Get R2 client."""
     return boto3.client(
