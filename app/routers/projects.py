@@ -6,6 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.project import Project, ProjectSettings as ProjectSettingsModel, ProjectStatus
+from app.models.user import User
+from app.routers.auth import get_current_user_from_token
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 
 router = APIRouter()
@@ -17,17 +20,69 @@ async def list_projects(
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
 ):
     """List user's projects."""
-    # TODO: Implement list projects
-    return []
+    query = db.query(Project).filter(
+        Project.user_id == current_user.id,
+        Project.deleted_at.is_(None),
+    )
+    if status:
+        query = query.filter(Project.status == status)
+
+    projects = query.order_by(Project.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    # Convert to response format with content count
+    result = []
+    for project in projects:
+        content_count = len(project.content_items) if project.content_items else 0
+        result.append(ProjectResponse(
+            id=project.id,
+            title=project.title,
+            status=project.status,
+            timeframe_start=project.timeframe_start,
+            timeframe_end=project.timeframe_end,
+            content_count=content_count,
+            voice_profile_id=project.voice_profile_id,
+            current_narrative_id=project.current_narrative_id,
+            current_video_id=project.current_video_id,
+            thumbnail_url=project.thumbnail_url,
+            created_at=project.created_at,
+        ))
+    return result
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
-async def create_project(request: ProjectCreate, db: Session = Depends(get_db)):
+async def create_project(
+    request: ProjectCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
+):
     """Create a new project."""
-    # TODO: Implement create project
-    raise HTTPException(status_code=501, detail="Not implemented")
+    project = Project(
+        user_id=current_user.id,
+        title=request.title,
+        timeframe_start=request.timeframe_start,
+        timeframe_end=request.timeframe_end,
+        status=ProjectStatus.DRAFT,
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    return ProjectResponse(
+        id=project.id,
+        title=project.title,
+        status=project.status,
+        timeframe_start=project.timeframe_start,
+        timeframe_end=project.timeframe_end,
+        content_count=0,
+        voice_profile_id=project.voice_profile_id,
+        current_narrative_id=project.current_narrative_id,
+        current_video_id=project.current_video_id,
+        thumbnail_url=project.thumbnail_url,
+        created_at=project.created_at,
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

@@ -1,0 +1,70 @@
+"""R2/S3 storage utilities."""
+
+import uuid
+from io import BytesIO
+
+import boto3
+from botocore.config import Config
+
+from app.config import get_settings
+
+settings = get_settings()
+
+
+def get_r2_client():
+    """Get R2 client."""
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.r2_endpoint,
+        aws_access_key_id=settings.r2_access_key_id,
+        aws_secret_access_key=settings.r2_secret_access_key,
+        config=Config(signature_version="s3v4"),
+    )
+
+
+def upload_file_to_r2(
+    file_data: bytes,
+    filename: str,
+    content_type: str,
+    folder: str = "content",
+) -> str:
+    """Upload a file to R2 and return the key."""
+    client = get_r2_client()
+
+    # Generate unique key
+    file_ext = filename.split(".")[-1] if "." in filename else ""
+    unique_id = str(uuid.uuid4())
+    key = f"{folder}/{unique_id}.{file_ext}" if file_ext else f"{folder}/{unique_id}"
+
+    client.put_object(
+        Bucket=settings.r2_bucket_name,
+        Key=key,
+        Body=file_data,
+        ContentType=content_type,
+    )
+
+    return key
+
+
+def get_file_url(key: str) -> str:
+    """Get a presigned URL for a file."""
+    client = get_r2_client()
+
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.r2_bucket_name, "Key": key},
+        ExpiresIn=3600,  # 1 hour
+    )
+
+    return url
+
+
+def delete_file_from_r2(key: str) -> bool:
+    """Delete a file from R2."""
+    client = get_r2_client()
+
+    try:
+        client.delete_object(Bucket=settings.r2_bucket_name, Key=key)
+        return True
+    except Exception:
+        return False

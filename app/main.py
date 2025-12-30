@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import auth, content, jobs, narratives, projects, social, videos, voice
+from app.routers import auth, content, instagram_import, jobs, narratives, projects, social, videos, voice
 
 # Import all models to ensure they're registered with Base
 from app.models import user, project, content as content_model, voice as voice_model  # noqa: F401
@@ -53,6 +53,9 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(social.router, prefix="/api/social", tags=["Social Connections"])
+app.include_router(
+    instagram_import.router, prefix="/api/import/instagram", tags=["Instagram Import"]
+)
 app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(content.router, prefix="/api/projects/{project_id}/content", tags=["Content"])
 app.include_router(voice.router, prefix="/api/voice", tags=["Voice"])
