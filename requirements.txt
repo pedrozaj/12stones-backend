@@ -25,7 +25,7 @@ redis==5.2.1
 # AI Services
 anthropic==0.40.0
 openai==1.58.1
-elevenlabs==1.17.1
+elevenlabs==2.27.0
 
 # File Storage (S3-compatible for R2)
 boto3==1.35.86
