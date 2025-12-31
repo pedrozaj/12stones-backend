@@ -38,7 +38,8 @@ def start_celery_worker():
             "worker",
             "-l", "info",
             "-Q", "content,voice,narrative,video",
-            "-c", "2",  # 2 concurrent workers
+            "-c", "1",  # Single worker to reduce memory
+            "-P", "solo",  # Solo pool to minimize memory usage
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
