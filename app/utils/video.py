@@ -121,17 +121,19 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Use zoompan filter - designed for creating video from still images
-            # zoompan with z=1 (no zoom) and d=frames outputs one input image as multiple output frames
+            # Use simple scale + loop approach
+            # First scale to target size, then use loop to repeat for duration
             total_frames_needed = int(duration_per_image * fps)
 
             segment_cmd = [
                 "ffmpeg", "-y",
+                "-loop", "1",
+                "-framerate", str(fps),
                 "-i", img_path,
-                "-vf", f"zoompan=z=1:d={total_frames_needed}:s=1920x1080:fps={fps}",
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                "-t", str(duration_per_image),
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
-                "-pix_fmt", "yuv420p",
                 "-an",
                 segment_path,
             ]
