@@ -32,6 +32,7 @@ async def list_voice_profiles(
             name=p.name,
             status=p.status,
             sample_duration=p.sample_duration_seconds,
+            sample_urls=[get_file_url(key) for key in (p.sample_urls or [])],
             created_at=p.created_at,
         )
         for p in profiles
@@ -88,6 +89,7 @@ async def create_voice_profile(
         name=profile.name,
         status=profile.status,
         sample_duration=profile.sample_duration_seconds,
+        sample_urls=[get_file_url(key) for key in sample_urls],
         created_at=profile.created_at,
     )
 
@@ -113,6 +115,7 @@ async def get_voice_profile(
         name=profile.name,
         status=profile.status,
         sample_duration=profile.sample_duration_seconds,
+        sample_urls=[get_file_url(key) for key in (profile.sample_urls or [])],
         created_at=profile.created_at,
     )
 
