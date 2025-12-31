@@ -129,7 +129,7 @@ def create_slideshow(
             "-map", "[outv]",
             "-map", f"{audio_index}:a",
             "-c:v", "libx264",
-            "-preset", "medium",
+            "-preset", "ultrafast",  # Fast encoding for cloud
             "-crf", "23",
             "-r", "30",  # Output at 30fps
             "-c:a", "aac",
@@ -140,16 +140,24 @@ def create_slideshow(
             output_path,
         ]
 
-        # Run ffmpeg
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-        )
+        # Run ffmpeg with 10 minute timeout
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minutes
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("FFmpeg timed out after 10 minutes")
 
         if result.returncode != 0:
-            # Try alternative approach if first fails
-            error_msg = result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
+            # Capture first 1000 and last 1000 chars to see both error context
+            stderr = result.stderr
+            if len(stderr) > 2000:
+                error_msg = f"...{stderr[:1000]}...[truncated]...{stderr[-1000:]}"
+            else:
+                error_msg = stderr
             raise RuntimeError(f"FFmpeg failed: {error_msg}")
 
     # Get output file info
