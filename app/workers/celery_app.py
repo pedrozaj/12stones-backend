@@ -30,9 +30,11 @@ celery_app.conf.update(
     task_soft_time_limit=3300,  # Soft limit 55 minutes
     worker_prefetch_multiplier=1,  # Don't prefetch tasks
     task_routes={
-        "app.workers.content_tasks.*": {"queue": "content"},
-        "app.workers.voice_tasks.*": {"queue": "voice"},
-        "app.workers.narrative_tasks.*": {"queue": "narrative"},
-        "app.workers.video_tasks.*": {"queue": "video"},
+        # Route tasks by custom name prefix
+        "content:*": {"queue": "content"},
+        "voice:*": {"queue": "voice"},
+        "audio:*": {"queue": "voice"},
+        "narrative:*": {"queue": "narrative"},
+        "video:*": {"queue": "video"},
     },
 )
