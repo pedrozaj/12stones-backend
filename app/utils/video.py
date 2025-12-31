@@ -138,12 +138,13 @@ def create_slideshow(
                 raise RuntimeError(f"No frames created in {seq_dir}")
 
             # Use image2 demuxer to read the sequence
-            # Set start_number explicitly for reliability
+            # Use glob pattern for reliability in containers
             segment_cmd = [
                 "ffmpeg", "-y",
+                "-f", "image2",
+                "-pattern_type", "glob",
                 "-framerate", str(fps),
-                "-start_number", "0",
-                "-i", os.path.join(seq_dir, "frame_%05d.jpg"),
+                "-i", os.path.join(seq_dir, "*.jpg"),
                 "-frames:v", str(frames_to_create),
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
