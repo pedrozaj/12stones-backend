@@ -103,34 +103,36 @@ def create_slideshow(
             resize_image_to_fit(img_path, processed_path)
             processed_images.append(processed_path)
 
-        # Use framerate-based approach instead of concat demuxer for more reliability
-        # Calculate framerate to achieve desired duration per image
-        # Using 1 frame per image with appropriate framerate
-        framerate = 1.0 / duration_per_image
+        # Build inputs: loop each image for its duration
+        # This approach is more reliable than concat demuxer or low-framerate image2
+        inputs = []
+        filter_inputs = []
 
-        # Create a file list for ffmpeg (glob pattern approach)
-        # First, create numbered symlinks or copies for sequential access
         for i, img_path in enumerate(processed_images):
-            # Images are already named sequentially as img_000.jpg, img_001.jpg, etc.
-            pass
+            inputs.extend(["-loop", "1", "-t", str(duration_per_image), "-i", img_path])
+            filter_inputs.append(f"[{i}:v]")
 
-        # Build ffmpeg command using image2 demuxer with glob pattern
-        # This is more reliable than the concat demuxer for image sequences
-        glob_pattern = os.path.join(temp_dir, "img_%03d.jpg")
+        # Add audio as last input
+        audio_index = len(processed_images)
+        inputs.extend(["-i", audio_path])
+
+        # Build concat filter
+        concat_filter = f"{''.join(filter_inputs)}concat=n={num_images}:v=1:a=0[outv]"
 
         cmd = [
             "ffmpeg",
             "-y",  # Overwrite output
-            "-framerate", str(framerate),
-            "-i", glob_pattern,
-            "-i", audio_path,
+            *inputs,
+            "-filter_complex", concat_filter,
+            "-map", "[outv]",
+            "-map", f"{audio_index}:a",
             "-c:v", "libx264",
             "-preset", "medium",
             "-crf", "23",
+            "-r", "30",  # Output at 30fps
             "-c:a", "aac",
             "-b:a", "192k",
             "-pix_fmt", "yuv420p",
-            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
             "-shortest",
             "-movflags", "+faststart",
             output_path,
