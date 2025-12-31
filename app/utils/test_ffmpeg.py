@@ -51,65 +51,118 @@ def create_silent_audio(output_path: str, duration: float = 10.0) -> None:
     print(f"Created silent audio: {output_path} ({os.path.getsize(output_path)} bytes)")
 
 
-def test_ffmpeg_slideshow() -> dict:
+def test_single_image_to_video(image_path: str, output_path: str, duration: float = 3.0) -> dict:
     """
-    Test the FFmpeg slideshow creation in isolation.
-
-    Returns:
-        Dict with test results
+    Test different FFmpeg approaches to create video from a single image.
+    Returns the method that worked.
     """
-    from app.utils.video import create_slideshow
+    methods = []
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        print(f"Using temp directory: {temp_dir}")
+    # Method 1: Using lavfi color source + overlay (most reliable)
+    method1_cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", f"color=c=black:s=1920x1080:d={duration}:r=24",
+        "-i", image_path,
+        "-filter_complex", "[0:v][1:v]overlay=(W-w)/2:(H-h)/2",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        output_path,
+    ]
+    methods.append(("lavfi_overlay", method1_cmd))
 
-        # Create test images
-        print("\n=== Creating test images ===")
-        image_paths = create_test_images(temp_dir, count=3)
+    # Method 2: Using image2 with framerate
+    method2_cmd = [
+        "ffmpeg", "-y",
+        "-framerate", "24",
+        "-t", str(duration),
+        "-i", image_path,
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-vf", "fps=24",
+        output_path,
+    ]
+    methods.append(("image2_framerate", method2_cmd))
 
-        # Create silent audio (10 seconds)
-        print("\n=== Creating silent audio ===")
-        audio_path = os.path.join(temp_dir, "test_audio.aac")
-        create_silent_audio(audio_path, duration=10.0)
+    # Method 3: Using loop with -t
+    method3_cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1",
+        "-i", image_path,
+        "-t", str(duration),
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-r", "24",
+        output_path,
+    ]
+    methods.append(("loop_t", method3_cmd))
 
-        # Create output path
-        output_path = os.path.join(temp_dir, "test_video.mp4")
+    # Method 4: Using movie filter
+    method4_cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", f"movie={image_path}:loop=0,setpts=N/24/TB,trim=duration={duration}",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        output_path,
+    ]
+    methods.append(("movie_filter", method4_cmd))
 
-        # Run slideshow creation
-        print("\n=== Running create_slideshow ===")
+    results = []
+    for name, cmd in methods:
         try:
-            result = create_slideshow(
-                image_paths=image_paths,
-                audio_path=audio_path,
-                output_path=output_path,
-            )
-
-            print(f"\n=== SUCCESS ===")
-            print(f"Video created: {output_path}")
-            print(f"Duration: {result['duration_seconds']} seconds")
-            print(f"File size: {result['file_size_bytes']} bytes")
-
-            # Verify the video exists and has content
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                return {
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+                results.append({
+                    "method": name,
                     "success": True,
-                    "duration_seconds": result["duration_seconds"],
-                    "file_size_bytes": result["file_size_bytes"],
-                    "message": "FFmpeg slideshow creation working correctly!",
-                }
+                    "file_size": os.path.getsize(output_path),
+                })
+                # Clean up for next test
+                os.remove(output_path)
             else:
-                return {
+                results.append({
+                    "method": name,
                     "success": False,
-                    "message": "Video file was not created or is empty",
-                }
-
+                    "error": result.stderr[-500:] if result.stderr else "Empty output",
+                })
         except Exception as e:
-            print(f"\n=== FAILED ===")
-            print(f"Error: {e}")
-            return {
+            results.append({
+                "method": name,
                 "success": False,
                 "error": str(e),
-                "message": "FFmpeg slideshow creation failed",
+            })
+
+    return {"methods_tested": results}
+
+
+def test_ffmpeg_slideshow() -> dict:
+    """
+    Test different FFmpeg methods for image-to-video conversion.
+
+    Returns:
+        Dict with test results showing which methods work
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Create a single test image
+        image_paths = create_test_images(temp_dir, count=1)
+        output_path = os.path.join(temp_dir, "test_video.mp4")
+
+        # Test which methods work
+        method_results = test_single_image_to_video(
+            image_paths[0], output_path, duration=3.0
+        )
+
+        # Find the working method
+        working_methods = [m for m in method_results["methods_tested"] if m["success"]]
+
+        if working_methods:
+            return {
+                "success": True,
+                "working_methods": working_methods,
+                "all_results": method_results["methods_tested"],
+                "message": f"Found {len(working_methods)} working method(s)!",
+            }
+        else:
+            return {
+                "success": False,
+                "all_results": method_results["methods_tested"],
+                "message": "No FFmpeg methods worked for image-to-video conversion",
             }
 
 
