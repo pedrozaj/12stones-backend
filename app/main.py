@@ -129,3 +129,15 @@ async def health():
         "status": "healthy",
         "version": "0.1.0",
     }
+
+
+@app.post("/debug/test-ffmpeg")
+async def debug_test_ffmpeg():
+    """
+    Test FFmpeg video creation in isolation.
+
+    Creates test images + silent audio, runs FFmpeg slideshow creation,
+    and returns success/failure status.
+    """
+    from app.utils.test_ffmpeg import test_ffmpeg_slideshow
+    return test_ffmpeg_slideshow()
