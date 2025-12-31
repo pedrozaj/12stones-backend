@@ -133,33 +133,73 @@ def test_single_image_to_video(image_path: str, output_path: str, duration: floa
 
 def test_basic_ffmpeg() -> dict:
     """Test if FFmpeg can create any video at all using testsrc."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_path = os.path.join(temp_dir, "testsrc.mp4")
+    results = []
 
-        # Create a simple test video using FFmpeg's built-in test source
-        cmd = [
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Test 1: Very short duration with libx264
+        output1 = os.path.join(temp_dir, "test1.mp4")
+        cmd1 = [
             "ffmpeg", "-y",
             "-f", "lavfi",
-            "-i", "testsrc=duration=2:size=1920x1080:rate=24",
+            "-i", "testsrc=duration=0.5:size=320x240:rate=10",
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-pix_fmt", "yuv420p",
-            output_path,
+            output1,
         ]
+        r1 = subprocess.run(cmd1, capture_output=True, text=True, timeout=30)
+        results.append({
+            "test": "libx264_short",
+            "success": r1.returncode == 0 and os.path.exists(output1) and os.path.getsize(output1) > 100,
+            "file_size": os.path.getsize(output1) if os.path.exists(output1) else 0,
+            "stderr_tail": r1.stderr[-200:] if r1.stderr else "",
+        })
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            return {
-                "test": "testsrc",
-                "success": True,
-                "file_size": os.path.getsize(output_path),
-            }
-        else:
-            return {
-                "test": "testsrc",
-                "success": False,
-                "error": result.stderr[-500:] if result.stderr else "Unknown error",
-            }
+        # Test 2: Using mpeg4 codec (simpler)
+        output2 = os.path.join(temp_dir, "test2.mp4")
+        cmd2 = [
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", "testsrc=duration=0.5:size=320x240:rate=10",
+            "-c:v", "mpeg4",
+            "-q:v", "5",
+            output2,
+        ]
+        r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=30)
+        results.append({
+            "test": "mpeg4_short",
+            "success": r2.returncode == 0 and os.path.exists(output2) and os.path.getsize(output2) > 100,
+            "file_size": os.path.getsize(output2) if os.path.exists(output2) else 0,
+            "stderr_tail": r2.stderr[-200:] if r2.stderr else "",
+        })
+
+        # Test 3: Using rawvideo (no encoding)
+        output3 = os.path.join(temp_dir, "test3.yuv")
+        cmd3 = [
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", "testsrc=duration=0.1:size=320x240:rate=10",
+            "-c:v", "rawvideo",
+            "-pix_fmt", "yuv420p",
+            output3,
+        ]
+        r3 = subprocess.run(cmd3, capture_output=True, text=True, timeout=30)
+        results.append({
+            "test": "rawvideo",
+            "success": r3.returncode == 0 and os.path.exists(output3) and os.path.getsize(output3) > 100,
+            "file_size": os.path.getsize(output3) if os.path.exists(output3) else 0,
+            "stderr_tail": r3.stderr[-200:] if r3.stderr else "",
+        })
+
+        # Test 4: Get FFmpeg version
+        version_result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
+        version_info = version_result.stdout.split("\n")[0] if version_result.stdout else "unknown"
+
+    return {
+        "tests": results,
+        "ffmpeg_version": version_info,
+        "any_success": any(r["success"] for r in results),
+    }
 
 
 def test_ffmpeg_slideshow() -> dict:
