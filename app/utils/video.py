@@ -103,43 +103,68 @@ def create_slideshow(
             resize_image_to_fit(img_path, processed_path)
             processed_images.append(processed_path)
 
-        # Simple approach: create video files for each image, then concat with protocol
-        # This uses much less memory than filter_complex concat
+        # Create video segments - simplest possible approach
         segment_files = []
+        fps = 24
+        total_frames = int(duration_per_image * fps)
 
         for i, img_path in enumerate(processed_images):
-            segment_path = os.path.join(temp_dir, f"segment_{i:03d}.ts")
+            segment_path = os.path.join(temp_dir, f"segment_{i:03d}.mp4")
             segment_files.append(segment_path)
 
-            # Create a video segment from this image
+            # Debug: verify image exists and has content
+            if not os.path.exists(img_path):
+                raise RuntimeError(f"Image file does not exist: {img_path}")
+            img_size = os.path.getsize(img_path)
+            if img_size == 0:
+                raise RuntimeError(f"Image file is empty: {img_path}")
+
+            # Simplest possible FFmpeg command for image to video
+            # Using -r for output framerate only, not -loop
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-loop", "1",
-                "-i", img_path,
+                "-f", "lavfi",
+                "-i", f"movie={img_path},scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,loop=loop={total_frames}:size=1:start=0,fps={fps}",
                 "-t", str(duration_per_image),
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
-                "-tune", "stillimage",
                 "-pix_fmt", "yuv420p",
-                "-r", "24",
-                "-f", "mpegts",
                 segment_path,
             ]
 
-            seg_result = subprocess.run(segment_cmd, capture_output=True, text=True, timeout=120)
+            seg_result = subprocess.run(segment_cmd, capture_output=True, text=True, timeout=300)
             if seg_result.returncode != 0:
-                raise RuntimeError(f"Failed to create segment {i}: {seg_result.stderr[-500:]}")
+                # If lavfi approach fails, try simpler method
+                segment_cmd_simple = [
+                    "ffmpeg", "-y",
+                    "-framerate", f"1/{duration_per_image}",
+                    "-i", img_path,
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                    "-t", str(duration_per_image),
+                    "-r", str(fps),
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p",
+                    segment_path,
+                ]
+                seg_result = subprocess.run(segment_cmd_simple, capture_output=True, text=True, timeout=300)
+                if seg_result.returncode != 0:
+                    raise RuntimeError(f"Failed to create segment {i} (size={img_size}): {seg_result.stderr[-800:]}")
 
-        # Concatenate all segments with audio
-        concat_input = "concat:" + "|".join(segment_files)
+        # Create concat list file
+        concat_list = os.path.join(temp_dir, "concat.txt")
+        with open(concat_list, "w") as f:
+            for seg in segment_files:
+                f.write(f"file '{seg}'\n")
 
+        # Concatenate segments with audio
         cmd = [
             "ffmpeg", "-y",
-            "-i", concat_input,
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_list,
             "-i", audio_path,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "23",
+            "-c:v", "copy",  # No re-encode needed
             "-c:a", "aac",
             "-b:a", "192k",
             "-shortest",
@@ -225,73 +250,6 @@ def create_slideshow_with_transitions(
         # Not enough time for transitions, fall back to simple slideshow
         return create_slideshow(image_paths, audio_path, output_path)
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Resize all images
-        processed_images = []
-        for i, img_path in enumerate(image_paths):
-            processed_path = os.path.join(temp_dir, f"img_{i:03d}.jpg")
-            resize_image_to_fit(img_path, processed_path)
-            processed_images.append(processed_path)
-
-        # Build complex filter for xfade transitions
-        inputs = []
-        filter_parts = []
-
-        # Create input streams for each image
-        for i, img_path in enumerate(processed_images):
-            inputs.extend(["-loop", "1", "-t", str(duration_per_image + transition_duration), "-i", img_path])
-
-        # Add audio input
-        inputs.extend(["-i", audio_path])
-
-        # Build xfade filter chain
-        current_stream = "[0:v]"
-        for i in range(1, num_images):
-            next_stream = f"[{i}:v]"
-            offset = duration_per_image * i
-            out_stream = f"[v{i}]" if i < num_images - 1 else "[vout]"
-            filter_parts.append(
-                f"{current_stream}{next_stream}xfade=transition=fade:duration={transition_duration}:offset={offset}{out_stream}"
-            )
-            current_stream = out_stream
-
-        filter_complex = ";".join(filter_parts)
-
-        # Build ffmpeg command
-        cmd = [
-            "ffmpeg",
-            "-y",
-            *inputs,
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", f"{num_images}:a",
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-pix_fmt", "yuv420p",
-            "-shortest",
-            "-movflags", "+faststart",
-            output_path,
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            # Fall back to simple slideshow if transitions fail
-            return create_slideshow(image_paths, audio_path, output_path)
-
-    # Get output file info
-    file_size = os.path.getsize(output_path)
-    probe = ffmpeg.probe(output_path)
-    video_stream = next(
-        (s for s in probe["streams"] if s["codec_type"] == "video"),
-        None,
-    )
-    duration = float(video_stream["duration"]) if video_stream else audio_duration
-
-    return {
-        "duration_seconds": int(duration),
-        "file_size_bytes": file_size,
-    }
+    # Skip xfade for reliability - just use simple slideshow
+    # The xfade filter with -loop 1 has proven unreliable on Railway
+    return create_slideshow(image_paths, audio_path, output_path)
