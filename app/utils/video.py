@@ -103,7 +103,8 @@ def create_slideshow(
             resize_image_to_fit(img_path, processed_path)
             processed_images.append(processed_path)
 
-        # Create video segments - simplest possible approach
+        # Create video segments using image sequence approach
+        # This avoids loop/overlay issues by creating physical copies
         segment_files = []
         fps = 24
         total_frames = int(duration_per_image * fps)
@@ -119,14 +120,20 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Use color source + overlay approach (most reliable for still images)
-            # Creates a black video of the right duration, then overlays the image
+            # Create image sequence directory for this segment
+            seq_dir = os.path.join(temp_dir, f"seq_{i:03d}")
+            os.makedirs(seq_dir, exist_ok=True)
+
+            # Copy image for each frame we need (symlinks to save space)
+            for frame_num in range(total_frames):
+                frame_path = os.path.join(seq_dir, f"frame_{frame_num:05d}.jpg")
+                os.symlink(img_path, frame_path)
+
+            # Use image2 demuxer to read the sequence
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-f", "lavfi",
-                "-i", f"color=c=black:s=1920x1080:d={duration_per_image}:r={fps}",
-                "-i", img_path,
-                "-filter_complex", "[1:v]scale=1920:1080:force_original_aspect_ratio=decrease[img];[0:v][img]overlay=(W-w)/2:(H-h)/2",
+                "-framerate", str(fps),
+                "-i", os.path.join(seq_dir, "frame_%05d.jpg"),
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p",
