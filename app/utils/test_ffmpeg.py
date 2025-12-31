@@ -238,6 +238,35 @@ def test_basic_ffmpeg() -> dict:
             "stderr_tail": r5.stderr[-300:] if r5.stderr else "",
         })
 
+        # Test 6: FULL HD JPEG with loop (matches slideshow settings)
+        img_hd = os.path.join(temp_dir, "test_hd.jpg")
+        output6 = os.path.join(temp_dir, "test6.mp4")
+        # Create a 1920x1080 test image (same as slideshow)
+        hd_img = PILImage.new("RGB", (1920, 1080), (0, 255, 0))
+        hd_img.save(img_hd, "JPEG", quality=95)
+
+        cmd6 = [
+            "ffmpeg", "-y",
+            "-loop", "1",
+            "-framerate", "24",
+            "-i", img_hd,
+            "-t", "3",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-an",
+            output6,
+        ]
+        r6 = subprocess.run(cmd6, capture_output=True, text=True, timeout=60)
+        results.append({
+            "test": "jpeg_fullhd_loop",
+            "success": r6.returncode == 0 and os.path.exists(output6) and os.path.getsize(output6) > 1000,
+            "file_size": os.path.getsize(output6) if os.path.exists(output6) else 0,
+            "stderr_tail": r6.stderr[-400:] if r6.stderr else "",
+            "img_size": os.path.getsize(img_hd),
+            "cmd": " ".join(cmd6),
+        })
+
         # Test 6: Get FFmpeg version
         version_result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
         version_info = version_result.stdout.split("\n")[0] if version_result.stdout else "unknown"
