@@ -126,15 +126,25 @@ def create_slideshow(
             os.makedirs(seq_dir, exist_ok=True)
 
             # Copy image for each frame we need (actual copies for Docker compatibility)
-            for frame_num in range(total_frames):
+            # We need at least 1 frame
+            frames_to_create = max(1, total_frames)
+            for frame_num in range(frames_to_create):
                 frame_path = os.path.join(seq_dir, f"frame_{frame_num:05d}.jpg")
                 shutil.copy2(img_path, frame_path)
 
+            # Debug: list what was created
+            created_files = sorted(os.listdir(seq_dir))
+            if not created_files:
+                raise RuntimeError(f"No frames created in {seq_dir}")
+
             # Use image2 demuxer to read the sequence
+            # Set start_number explicitly for reliability
             segment_cmd = [
                 "ffmpeg", "-y",
                 "-framerate", str(fps),
+                "-start_number", "0",
                 "-i", os.path.join(seq_dir, "frame_%05d.jpg"),
+                "-frames:v", str(frames_to_create),
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p",
@@ -144,7 +154,7 @@ def create_slideshow(
 
             seg_result = subprocess.run(segment_cmd, capture_output=True, text=True, timeout=300)
             if seg_result.returncode != 0:
-                raise RuntimeError(f"Failed to create segment {i} (size={img_size}): {seg_result.stderr[-1000:]}")
+                raise RuntimeError(f"Failed to create segment {i} (frames={frames_to_create}, files={len(created_files)}): {seg_result.stderr[-1000:]}")
 
         # Create concat list file
         concat_list = os.path.join(temp_dir, "concat.txt")
