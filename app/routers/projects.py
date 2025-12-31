@@ -168,9 +168,32 @@ async def update_project(
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: UUID, db: Session = Depends(get_db)):
-    """Delete a project."""
-    # TODO: Implement delete project
+async def delete_project(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
+):
+    """Delete a project and all related data."""
+    from app.models.content import ContentItem
+    from app.models.narrative import Narrative
+    from app.models.video import Video
+
+    # Get project
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id,
+    ).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Delete related data (cascade should handle most, but be explicit)
+    db.query(Video).filter(Video.project_id == project_id).delete()
+    db.query(Narrative).filter(Narrative.project_id == project_id).delete()
+    db.query(ContentItem).filter(ContentItem.project_id == project_id).delete()
+    db.delete(project)
+    db.commit()
+
     return {"data": {"success": True}}
 
 
