@@ -121,41 +121,24 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Create image sequence directory for this segment
-            seq_dir = os.path.join(temp_dir, f"seq_{i:03d}")
-            os.makedirs(seq_dir, exist_ok=True)
+            # Use ffmpeg-python library which handles complex filter graphs better
+            # The movie filter with loop=0 reads the image repeatedly
+            filter_str = f"movie={img_path}:loop=0,setpts=N/{fps}/TB,trim=duration={duration_per_image},format=yuv420p"
 
-            # Copy image for each frame we need (actual copies for Docker compatibility)
-            # We need at least 1 frame
-            frames_to_create = max(1, total_frames)
-            for frame_num in range(frames_to_create):
-                frame_path = os.path.join(seq_dir, f"frame_{frame_num:05d}.jpg")
-                shutil.copy2(img_path, frame_path)
-
-            # Debug: list what was created
-            created_files = sorted(os.listdir(seq_dir))
-            if not created_files:
-                raise RuntimeError(f"No frames created in {seq_dir}")
-
-            # Use image2 demuxer to read the sequence
-            # Use glob pattern for reliability in containers
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-f", "image2",
-                "-pattern_type", "glob",
-                "-framerate", str(fps),
-                "-i", os.path.join(seq_dir, "*.jpg"),
-                "-frames:v", str(frames_to_create),
+                "-f", "lavfi",
+                "-i", filter_str,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
-                "-pix_fmt", "yuv420p",
+                "-r", str(fps),
                 "-an",
                 segment_path,
             ]
 
             seg_result = subprocess.run(segment_cmd, capture_output=True, text=True, timeout=300)
             if seg_result.returncode != 0:
-                raise RuntimeError(f"Failed to create segment {i} (frames={frames_to_create}, files={len(created_files)}): {seg_result.stderr[-1000:]}")
+                raise RuntimeError(f"Failed to create segment {i} (size={img_size}): {seg_result.stderr[-1000:]}")
 
         # Create concat list file
         concat_list = os.path.join(temp_dir, "concat.txt")
