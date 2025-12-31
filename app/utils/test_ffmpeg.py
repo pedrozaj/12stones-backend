@@ -131,6 +131,37 @@ def test_single_image_to_video(image_path: str, output_path: str, duration: floa
     return {"methods_tested": results}
 
 
+def test_basic_ffmpeg() -> dict:
+    """Test if FFmpeg can create any video at all using testsrc."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_path = os.path.join(temp_dir, "testsrc.mp4")
+
+        # Create a simple test video using FFmpeg's built-in test source
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", "testsrc=duration=2:size=1920x1080:rate=24",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            output_path,
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            return {
+                "test": "testsrc",
+                "success": True,
+                "file_size": os.path.getsize(output_path),
+            }
+        else:
+            return {
+                "test": "testsrc",
+                "success": False,
+                "error": result.stderr[-500:] if result.stderr else "Unknown error",
+            }
+
+
 def test_ffmpeg_slideshow() -> dict:
     """
     Test the full create_slideshow function with multiple images.
@@ -139,6 +170,9 @@ def test_ffmpeg_slideshow() -> dict:
         Dict with test results
     """
     from app.utils.video import create_slideshow
+
+    # First test basic FFmpeg
+    basic_test = test_basic_ffmpeg()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create test images
@@ -160,6 +194,7 @@ def test_ffmpeg_slideshow() -> dict:
             if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
                 return {
                     "success": True,
+                    "basic_ffmpeg_test": basic_test,
                     "duration_seconds": result["duration_seconds"],
                     "file_size_bytes": result["file_size_bytes"],
                     "message": "FFmpeg slideshow creation working correctly!",
@@ -167,12 +202,14 @@ def test_ffmpeg_slideshow() -> dict:
             else:
                 return {
                     "success": False,
+                    "basic_ffmpeg_test": basic_test,
                     "message": "Video file was not created or is empty",
                 }
 
         except Exception as e:
             return {
                 "success": False,
+                "basic_ffmpeg_test": basic_test,
                 "error": str(e),
                 "message": "FFmpeg slideshow creation failed",
             }
