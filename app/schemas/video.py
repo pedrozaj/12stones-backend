@@ -34,6 +34,8 @@ class VideoResponse(BaseModel):
     duration: int | None = None
     file_size: int | None = None
     download_url: str | None = None
+    render_progress: int = 0
+    error_message: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
