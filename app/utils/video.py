@@ -103,38 +103,45 @@ def create_slideshow(
             resize_image_to_fit(img_path, processed_path)
             processed_images.append(processed_path)
 
-        # Build inputs: loop each image for its duration
-        # -loop 1: loop the image indefinitely
-        # -framerate 30: treat as 30fps video (creates frames to fill duration)
-        # -t duration: limit to this duration
-        inputs = []
-        filter_inputs = []
+        # Simple approach: create video files for each image, then concat with protocol
+        # This uses much less memory than filter_complex concat
+        segment_files = []
 
         for i, img_path in enumerate(processed_images):
-            inputs.extend(["-loop", "1", "-framerate", "30", "-t", str(duration_per_image), "-i", img_path])
-            filter_inputs.append(f"[{i}:v]")
+            segment_path = os.path.join(temp_dir, f"segment_{i:03d}.ts")
+            segment_files.append(segment_path)
 
-        # Add audio as last input
-        audio_index = len(processed_images)
-        inputs.extend(["-i", audio_path])
+            # Create a video segment from this image
+            segment_cmd = [
+                "ffmpeg", "-y",
+                "-loop", "1",
+                "-i", img_path,
+                "-t", str(duration_per_image),
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "stillimage",
+                "-pix_fmt", "yuv420p",
+                "-r", "24",
+                "-f", "mpegts",
+                segment_path,
+            ]
 
-        # Build concat filter
-        concat_filter = f"{''.join(filter_inputs)}concat=n={num_images}:v=1:a=0[outv]"
+            seg_result = subprocess.run(segment_cmd, capture_output=True, text=True, timeout=120)
+            if seg_result.returncode != 0:
+                raise RuntimeError(f"Failed to create segment {i}: {seg_result.stderr[-500:]}")
+
+        # Concatenate all segments with audio
+        concat_input = "concat:" + "|".join(segment_files)
 
         cmd = [
-            "ffmpeg",
-            "-y",  # Overwrite output
-            *inputs,
-            "-filter_complex", concat_filter,
-            "-map", "[outv]",
-            "-map", f"{audio_index}:a",
+            "ffmpeg", "-y",
+            "-i", concat_input,
+            "-i", audio_path,
             "-c:v", "libx264",
-            "-preset", "ultrafast",  # Fast encoding for cloud
+            "-preset", "ultrafast",
             "-crf", "23",
-            "-r", "30",  # Output at 30fps
             "-c:a", "aac",
             "-b:a", "192k",
-            "-pix_fmt", "yuv420p",
             "-shortest",
             "-movflags", "+faststart",
             output_path,
