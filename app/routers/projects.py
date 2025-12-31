@@ -123,10 +123,46 @@ async def update_project(
     project_id: UUID,
     request: ProjectUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
 ):
     """Update project details."""
-    # TODO: Implement update project
-    raise HTTPException(status_code=501, detail="Not implemented")
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id,
+        Project.deleted_at.is_(None),
+    ).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Update fields if provided
+    if request.title is not None:
+        project.title = request.title
+    if request.timeframe_start is not None:
+        project.timeframe_start = request.timeframe_start
+    if request.timeframe_end is not None:
+        project.timeframe_end = request.timeframe_end
+    if request.voice_profile_id is not None:
+        project.voice_profile_id = request.voice_profile_id
+
+    db.commit()
+    db.refresh(project)
+
+    content_count = len(project.content_items) if project.content_items else 0
+
+    return ProjectResponse(
+        id=project.id,
+        title=project.title,
+        status=project.status,
+        timeframe_start=project.timeframe_start,
+        timeframe_end=project.timeframe_end,
+        content_count=content_count,
+        voice_profile_id=project.voice_profile_id,
+        current_narrative_id=project.current_narrative_id,
+        current_video_id=project.current_video_id,
+        thumbnail_url=project.thumbnail_url,
+        created_at=project.created_at,
+    )
 
 
 @router.delete("/{project_id}")
