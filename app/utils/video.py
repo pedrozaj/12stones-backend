@@ -119,18 +119,22 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Absolute simplest FFmpeg command - no fancy filters
-            # Just loop image, set duration, encode
+            # Calculate exact frame count
+            frame_count = int(duration_per_image * fps)
+
+            # Use -frames:v to force exact number of output frames
+            # This is more reliable than -t with -loop
             segment_cmd = [
                 "ffmpeg", "-y",
                 "-loop", "1",
+                "-framerate", str(fps),
                 "-i", img_path,
-                "-vf", "format=yuv420p,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black",
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
-                "-t", str(duration_per_image),
-                "-r", str(fps),
-                "-an",  # No audio for segments
+                "-pix_fmt", "yuv420p",
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black",
+                "-frames:v", str(frame_count),
+                "-an",
                 segment_path,
             ]
 
