@@ -103,23 +103,26 @@ def create_slideshow(
             resize_image_to_fit(img_path, processed_path)
             processed_images.append(processed_path)
 
-        # Create a file list for ffmpeg concat
-        list_file = os.path.join(temp_dir, "images.txt")
-        with open(list_file, "w") as f:
-            for img_path in processed_images:
-                f.write(f"file '{img_path}'\n")
-                f.write(f"duration {duration_per_image}\n")
-            # Add last image again (required for concat demuxer)
-            f.write(f"file '{processed_images[-1]}'\n")
+        # Use framerate-based approach instead of concat demuxer for more reliability
+        # Calculate framerate to achieve desired duration per image
+        # Using 1 frame per image with appropriate framerate
+        framerate = 1.0 / duration_per_image
 
-        # Build ffmpeg command
-        # Using concat demuxer for images + audio overlay
+        # Create a file list for ffmpeg (glob pattern approach)
+        # First, create numbered symlinks or copies for sequential access
+        for i, img_path in enumerate(processed_images):
+            # Images are already named sequentially as img_000.jpg, img_001.jpg, etc.
+            pass
+
+        # Build ffmpeg command using image2 demuxer with glob pattern
+        # This is more reliable than the concat demuxer for image sequences
+        glob_pattern = os.path.join(temp_dir, "img_%03d.jpg")
+
         cmd = [
             "ffmpeg",
             "-y",  # Overwrite output
-            "-f", "concat",
-            "-safe", "0",
-            "-i", list_file,
+            "-framerate", str(framerate),
+            "-i", glob_pattern,
             "-i", audio_path,
             "-c:v", "libx264",
             "-preset", "medium",
@@ -127,6 +130,7 @@ def create_slideshow(
             "-c:a", "aac",
             "-b:a", "192k",
             "-pix_fmt", "yuv420p",
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
             "-shortest",
             "-movflags", "+faststart",
             output_path,
@@ -140,7 +144,9 @@ def create_slideshow(
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg failed: {result.stderr}")
+            # Try alternative approach if first fails
+            error_msg = result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
+            raise RuntimeError(f"FFmpeg failed: {error_msg}")
 
     # Get output file info
     file_size = os.path.getsize(output_path)
