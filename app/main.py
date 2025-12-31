@@ -1,5 +1,7 @@
 """FastAPI application entry point."""
 
+import os
+import subprocess
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,6 +18,44 @@ from app.models import narrative, video, social as social_model, job  # noqa: F4
 
 settings = get_settings()
 
+# Global reference to worker process
+_worker_process = None
+
+
+def start_celery_worker():
+    """Start Celery worker in a subprocess."""
+    global _worker_process
+    # Only start if not in development mode and Redis is configured
+    if not settings.redis_url:
+        print("REDIS_URL not configured, skipping Celery worker")
+        return
+
+    print("Starting Celery worker in background...")
+    _worker_process = subprocess.Popen(
+        [
+            "celery",
+            "-A", "app.workers.celery_app",
+            "worker",
+            "-l", "info",
+            "-Q", "content,voice,narrative,video",
+            "-c", "2",  # 2 concurrent workers
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    print(f"Celery worker started with PID {_worker_process.pid}")
+
+
+def stop_celery_worker():
+    """Stop the Celery worker subprocess."""
+    global _worker_process
+    if _worker_process:
+        print("Stopping Celery worker...")
+        _worker_process.terminate()
+        _worker_process.wait(timeout=10)
+        _worker_process = None
+        print("Celery worker stopped")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,7 +63,13 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     # Configure CORS on R2 bucket for direct uploads
     configure_r2_cors()
+    # Start Celery worker in background (for Railway single-service deployment)
+    if os.environ.get("RAILWAY_ENVIRONMENT"):
+        start_celery_worker()
     yield
+    # Cleanup
+    if os.environ.get("RAILWAY_ENVIRONMENT"):
+        stop_celery_worker()
 
 app = FastAPI(
     title="12 Stones API",
