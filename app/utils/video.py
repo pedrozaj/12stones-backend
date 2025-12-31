@@ -119,37 +119,24 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Simplest possible FFmpeg command for image to video
-            # Using -r for output framerate only, not -loop
+            # Absolute simplest FFmpeg command - no fancy filters
+            # Just loop image, set duration, encode
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-f", "lavfi",
-                "-i", f"movie={img_path},scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,loop=loop={total_frames}:size=1:start=0,fps={fps}",
-                "-t", str(duration_per_image),
+                "-loop", "1",
+                "-i", img_path,
+                "-vf", "format=yuv420p,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black",
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
-                "-pix_fmt", "yuv420p",
+                "-t", str(duration_per_image),
+                "-r", str(fps),
+                "-an",  # No audio for segments
                 segment_path,
             ]
 
             seg_result = subprocess.run(segment_cmd, capture_output=True, text=True, timeout=300)
             if seg_result.returncode != 0:
-                # If lavfi approach fails, try simpler method
-                segment_cmd_simple = [
-                    "ffmpeg", "-y",
-                    "-framerate", f"1/{duration_per_image}",
-                    "-i", img_path,
-                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-                    "-t", str(duration_per_image),
-                    "-r", str(fps),
-                    "-c:v", "libx264",
-                    "-preset", "ultrafast",
-                    "-pix_fmt", "yuv420p",
-                    segment_path,
-                ]
-                seg_result = subprocess.run(segment_cmd_simple, capture_output=True, text=True, timeout=300)
-                if seg_result.returncode != 0:
-                    raise RuntimeError(f"Failed to create segment {i} (size={img_size}): {seg_result.stderr[-800:]}")
+                raise RuntimeError(f"Failed to create segment {i} (size={img_size}): {seg_result.stderr[-1000:]}")
 
         # Create concat list file
         concat_list = os.path.join(temp_dir, "concat.txt")
