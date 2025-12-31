@@ -191,7 +191,54 @@ def test_basic_ffmpeg() -> dict:
             "stderr_tail": r3.stderr[-200:] if r3.stderr else "",
         })
 
-        # Test 4: Get FFmpeg version
+        # Test 4: JPEG image input with loop
+        img_test = os.path.join(temp_dir, "test_img.jpg")
+        output4 = os.path.join(temp_dir, "test4.mp4")
+        # Create a simple test image
+        from PIL import Image as PILImage
+        test_img = PILImage.new("RGB", (320, 240), (255, 0, 0))
+        test_img.save(img_test, "JPEG", quality=95)
+
+        cmd4 = [
+            "ffmpeg", "-y",
+            "-loop", "1",
+            "-framerate", "10",
+            "-i", img_test,
+            "-t", "0.5",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            output4,
+        ]
+        r4 = subprocess.run(cmd4, capture_output=True, text=True, timeout=30)
+        results.append({
+            "test": "jpeg_loop",
+            "success": r4.returncode == 0 and os.path.exists(output4) and os.path.getsize(output4) > 100,
+            "file_size": os.path.getsize(output4) if os.path.exists(output4) else 0,
+            "stderr_tail": r4.stderr[-300:] if r4.stderr else "",
+            "img_size": os.path.getsize(img_test),
+            "cmd": " ".join(cmd4),
+        })
+
+        # Test 5: JPEG image input WITHOUT loop (single frame)
+        output5 = os.path.join(temp_dir, "test5.mp4")
+        cmd5 = [
+            "ffmpeg", "-y",
+            "-i", img_test,
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            output5,
+        ]
+        r5 = subprocess.run(cmd5, capture_output=True, text=True, timeout=30)
+        results.append({
+            "test": "jpeg_single_frame",
+            "success": r5.returncode == 0 and os.path.exists(output5) and os.path.getsize(output5) > 100,
+            "file_size": os.path.getsize(output5) if os.path.exists(output5) else 0,
+            "stderr_tail": r5.stderr[-300:] if r5.stderr else "",
+        })
+
+        # Test 6: Get FFmpeg version
         version_result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
         version_info = version_result.stdout.split("\n")[0] if version_result.stdout else "unknown"
 
