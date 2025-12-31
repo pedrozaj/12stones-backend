@@ -315,6 +315,7 @@ async def regenerate_narrative(
     )
 
     db.add(narrative)
+    db.flush()  # Flush to ensure narrative.id is available
 
     # Update project's current narrative
     project.current_narrative_id = narrative.id

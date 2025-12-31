@@ -144,6 +144,8 @@ async def update_project(
         project.timeframe_end = request.timeframe_end
     if request.voice_profile_id is not None:
         project.voice_profile_id = request.voice_profile_id
+    if request.current_narrative_id is not None:
+        project.current_narrative_id = request.current_narrative_id
 
     db.commit()
     db.refresh(project)

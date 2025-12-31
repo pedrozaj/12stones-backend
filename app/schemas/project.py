@@ -47,6 +47,7 @@ class ProjectUpdate(BaseModel):
     timeframe_end: date | None = None
     settings: ProjectSettings | None = None
     voice_profile_id: UUID | None = None
+    current_narrative_id: UUID | None = None
 
 
 class ProjectResponse(BaseModel):
