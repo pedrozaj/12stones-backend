@@ -104,12 +104,14 @@ def create_slideshow(
             processed_images.append(processed_path)
 
         # Build inputs: loop each image for its duration
-        # This approach is more reliable than concat demuxer or low-framerate image2
+        # -loop 1: loop the image indefinitely
+        # -framerate 30: treat as 30fps video (creates frames to fill duration)
+        # -t duration: limit to this duration
         inputs = []
         filter_inputs = []
 
         for i, img_path in enumerate(processed_images):
-            inputs.extend(["-loop", "1", "-t", str(duration_per_image), "-i", img_path])
+            inputs.extend(["-loop", "1", "-framerate", "30", "-t", str(duration_per_image), "-i", img_path])
             filter_inputs.append(f"[{i}:v]")
 
         # Add audio as last input
