@@ -133,36 +133,48 @@ def test_single_image_to_video(image_path: str, output_path: str, duration: floa
 
 def test_ffmpeg_slideshow() -> dict:
     """
-    Test different FFmpeg methods for image-to-video conversion.
+    Test the full create_slideshow function with multiple images.
 
     Returns:
-        Dict with test results showing which methods work
+        Dict with test results
     """
+    from app.utils.video import create_slideshow
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Create a single test image
-        image_paths = create_test_images(temp_dir, count=1)
+        # Create test images
+        image_paths = create_test_images(temp_dir, count=3)
         output_path = os.path.join(temp_dir, "test_video.mp4")
 
-        # Test which methods work
-        method_results = test_single_image_to_video(
-            image_paths[0], output_path, duration=3.0
-        )
+        # Create silent audio (9 seconds, 3 per image)
+        audio_path = os.path.join(temp_dir, "test_audio.aac")
+        create_silent_audio(audio_path, duration=9.0)
 
-        # Find the working method
-        working_methods = [m for m in method_results["methods_tested"] if m["success"]]
+        try:
+            # Run the actual create_slideshow function
+            result = create_slideshow(
+                image_paths=image_paths,
+                audio_path=audio_path,
+                output_path=output_path,
+            )
 
-        if working_methods:
-            return {
-                "success": True,
-                "working_methods": working_methods,
-                "all_results": method_results["methods_tested"],
-                "message": f"Found {len(working_methods)} working method(s)!",
-            }
-        else:
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {
+                    "success": True,
+                    "duration_seconds": result["duration_seconds"],
+                    "file_size_bytes": result["file_size_bytes"],
+                    "message": "FFmpeg slideshow creation working correctly!",
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Video file was not created or is empty",
+                }
+
+        except Exception as e:
             return {
                 "success": False,
-                "all_results": method_results["methods_tested"],
-                "message": "No FFmpeg methods worked for image-to-video conversion",
+                "error": str(e),
+                "message": "FFmpeg slideshow creation failed",
             }
 
 

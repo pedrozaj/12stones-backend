@@ -119,21 +119,18 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Calculate exact frame count
-            frame_count = int(duration_per_image * fps)
-
-            # Use -frames:v to force exact number of output frames
-            # This is more reliable than -t with -loop
+            # Use image2 demuxer with -framerate and -t (tested working on Railway)
+            # This approach uses -framerate as input option and -t for duration
+            # The fps filter ensures proper output timing
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-loop", "1",
                 "-framerate", str(fps),
+                "-t", str(duration_per_image),
                 "-i", img_path,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p",
-                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black",
-                "-frames:v", str(frame_count),
+                "-vf", f"scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,fps={fps}",
                 "-an",
                 segment_path,
             ]
