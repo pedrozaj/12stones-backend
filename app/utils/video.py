@@ -121,19 +121,16 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Use simple scale + loop approach
-            # First scale to target size, then use loop to repeat for duration
-            total_frames_needed = int(duration_per_image * fps)
-
+            # Simple loop approach - image is already resized to 1920x1080 by PIL
             segment_cmd = [
                 "ffmpeg", "-y",
                 "-loop", "1",
                 "-framerate", str(fps),
                 "-i", img_path,
-                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
                 "-t", str(duration_per_image),
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p",
                 "-an",
                 segment_path,
             ]
