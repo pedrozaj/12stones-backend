@@ -76,6 +76,45 @@ async def upload_content(
     raise HTTPException(status_code=501, detail="Not implemented")
 
 
+@router.post("/test-content")
+async def create_test_content(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_token),
+):
+    """Create test content for development/testing purposes."""
+    from app.models.content import ContentSource, ContentStatus, ContentType
+    from app.models.project import Project
+
+    # Verify project belongs to user
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id,
+    ).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Create test content items
+    test_items = []
+    for i in range(3):
+        item = ContentItem(
+            project_id=project_id,
+            type=ContentType.PHOTO,
+            source=ContentSource.UPLOAD,
+            status=ContentStatus.READY,
+            r2_key=f"test/placeholder-{i}.jpg",
+            original_caption=f"Test photo {i+1} - A beautiful memory from 2024",
+            included_in_narrative=True,
+        )
+        db.add(item)
+        test_items.append(item)
+
+    db.commit()
+
+    return {"message": f"Created {len(test_items)} test content items", "count": len(test_items)}
+
+
 @router.post("/import")
 async def import_content(
     project_id: UUID,
