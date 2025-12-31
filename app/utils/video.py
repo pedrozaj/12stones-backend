@@ -121,17 +121,17 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Use ffmpeg-python library which handles complex filter graphs better
-            # The movie filter with loop=0 reads the image repeatedly
-            filter_str = f"movie={img_path}:loop=0,setpts=N/{fps}/TB,trim=duration={duration_per_image},format=yuv420p"
+            # Use zoompan filter - designed for creating video from still images
+            # zoompan with z=1 (no zoom) and d=frames outputs one input image as multiple output frames
+            total_frames_needed = int(duration_per_image * fps)
 
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-f", "lavfi",
-                "-i", filter_str,
+                "-i", img_path,
+                "-vf", f"zoompan=z=1:d={total_frames_needed}:s=1920x1080:fps={fps}",
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
-                "-r", str(fps),
+                "-pix_fmt", "yuv420p",
                 "-an",
                 segment_path,
             ]
