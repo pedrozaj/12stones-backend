@@ -119,18 +119,17 @@ def create_slideshow(
             if img_size == 0:
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
-            # Use image2 demuxer with -framerate and -t (tested working on Railway)
-            # This approach uses -framerate as input option and -t for duration
-            # The fps filter ensures proper output timing
+            # Use color source + overlay approach (most reliable for still images)
+            # Creates a black video of the right duration, then overlays the image
             segment_cmd = [
                 "ffmpeg", "-y",
-                "-framerate", str(fps),
-                "-t", str(duration_per_image),
+                "-f", "lavfi",
+                "-i", f"color=c=black:s=1920x1080:d={duration_per_image}:r={fps}",
                 "-i", img_path,
+                "-filter_complex", "[1:v]scale=1920:1080:force_original_aspect_ratio=decrease[img];[0:v][img]overlay=(W-w)/2:(H-h)/2",
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p",
-                "-vf", f"scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,fps={fps}",
                 "-an",
                 segment_path,
             ]
