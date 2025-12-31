@@ -1,6 +1,7 @@
 """Video creation utilities using FFmpeg."""
 
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -124,10 +125,10 @@ def create_slideshow(
             seq_dir = os.path.join(temp_dir, f"seq_{i:03d}")
             os.makedirs(seq_dir, exist_ok=True)
 
-            # Copy image for each frame we need (symlinks to save space)
+            # Copy image for each frame we need (actual copies for Docker compatibility)
             for frame_num in range(total_frames):
                 frame_path = os.path.join(seq_dir, f"frame_{frame_num:05d}.jpg")
-                os.symlink(img_path, frame_path)
+                shutil.copy2(img_path, frame_path)
 
             # Use image2 demuxer to read the sequence
             segment_cmd = [
