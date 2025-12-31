@@ -122,6 +122,7 @@ def create_slideshow(
                 raise RuntimeError(f"Image file is empty: {img_path}")
 
             # Simple loop approach - image is already resized to 1920x1080 by PIL
+            # Limit threads to avoid resource issues in containers
             segment_cmd = [
                 "ffmpeg", "-y",
                 "-loop", "1",
@@ -131,6 +132,7 @@ def create_slideshow(
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p",
+                "-threads", "4",
                 "-an",
                 segment_path,
             ]

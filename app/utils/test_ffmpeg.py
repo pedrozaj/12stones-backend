@@ -250,10 +250,11 @@ def test_basic_ffmpeg() -> dict:
             "-loop", "1",
             "-framerate", "24",
             "-i", img_hd,
-            "-t", "3",
+            "-t", "1",
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-pix_fmt", "yuv420p",
+            "-threads", "4",
             "-an",
             output6,
         ]
